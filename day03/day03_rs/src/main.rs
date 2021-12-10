@@ -53,18 +53,34 @@ pub fn solve1(input: &[u32], bits: usize) -> u32 {
 
     gamma_rate * epsilon_rate
 }
-pub fn reduce(input: &[u32], bits: usize, most_common_bits: &[bool], most_common: bool) -> u32 {
+pub fn reduce(input: &[u32], bits: usize, most_common: bool) -> u32 {
     let mut result = input.to_vec();
+    println!("Values: {:?}", &result);
+    let mut mcb = most_common_bits(&result, bits);
     let mut temp = Vec::new();
-    for pos in 1..=bits {
+    for pos in (1..=bits).rev() {
         println!("[reduce] position {}", &pos);
+        println!(
+            "MCB: {}",
+            mcb.iter()
+                .rev()
+                .map(|b| if *b { '1' } else { '0' })
+                .collect::<String>()
+        );
         for n in result.iter() {
             if most_common {
-                if get_bit_at(*n, pos) == most_common_bits[pos - 1] {
+                if get_bit_at(*n, pos) == mcb[pos - 1] {
+                    println!(
+                        "Position {}, value: {}, bit: {}, mcb: {}",
+                        &pos,
+                        *n,
+                        get_bit_at(*n, pos),
+                        &mcb[pos - 1]
+                    );
                     temp.push(*n);
                     continue;
                 }
-            } else if get_bit_at(*n, pos) != most_common_bits[pos - 1] {
+            } else if get_bit_at(*n, pos) != mcb[pos - 1] {
                 temp.push(*n);
                 continue;
             }
@@ -75,14 +91,14 @@ pub fn reduce(input: &[u32], bits: usize, most_common_bits: &[bool], most_common
         println!("Found {} numbers: {:?}", temp.len(), &temp);
         result.clear();
         result.append(&mut temp);
+        mcb = most_common_bits(&result, bits);
     }
 
     0
 }
 pub fn solve2(input: &[u32], bits: usize) -> u32 {
-    let most_common = most_common_bits(input, bits);
-    let oxygen_rating = reduce(input, bits, &most_common, true);
-    let co2_rating = reduce(input, bits, &most_common, false);
+    let oxygen_rating = reduce(input, bits, true);
+    let co2_rating = reduce(input, bits, false);
 
     oxygen_rating * co2_rating
 }
@@ -96,6 +112,16 @@ mod tests {
         assert_eq!(get_inverse(1, 5), 30);
         assert_eq!(get_inverse(3, 5), 28);
     }
+
+    #[test]
+    fn test_get_bit_at() {
+        let most_common = vec![false, true, true, false, true];
+        assert_eq!(get_bit_at(4, 1), false);
+        assert_eq!(get_bit_at(4, 2), false);
+        assert_eq!(get_bit_at(4, 3), true);
+        assert_eq!(get_bit_at(4, 4), false);
+        assert_eq!(get_bit_at(4, 5), false);
+    }
     #[test]
     fn test_solve1() {
         let input = vec![
@@ -105,6 +131,7 @@ mod tests {
         .iter()
         .map(|l| u32::from_str_radix(l, 2).unwrap())
         .collect::<Vec<_>>();
+
         assert_eq!(solve1(&input, 5), 198);
     }
 
@@ -130,6 +157,7 @@ mod tests {
         .map(|l| u32::from_str_radix(l, 2).unwrap())
         .collect::<Vec<_>>();
         let most_common = most_common_bits(&input, 5);
+        println!("most common: {:?}", &most_common);
         assert!(!most_common[0]);
         assert!(most_common[1]);
         assert!(most_common[2]);
@@ -146,6 +174,12 @@ mod tests {
         .map(|l| u32::from_str_radix(l, 2).unwrap())
         .collect::<Vec<_>>();
         let most_common = most_common_bits(&input, 5);
-        assert_eq!(reduce(&input, 5, &most_common, true), 23);
+        assert_eq!(reduce(&input, 5, true), 23);
+        // fails, because mcb from 2nd iteration is 11111 instead of 10100
+    }
+
+    #[test]
+    fn divide() {
+        println!("{}", (7_usize / 2_usize));
     }
 }
