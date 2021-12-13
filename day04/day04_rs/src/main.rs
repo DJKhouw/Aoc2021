@@ -1,26 +1,27 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::fs;
+use std::{collections::HashMap, fs};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BingoField {
     val: usize,
-    state: bool,
+    marked: bool,
 }
 impl BingoField {
     pub fn new(val: usize) -> Self {
-        Self { val, state: false }
+        Self { val, marked: false }
     }
     pub fn mark(&mut self) {
-        self.state = true;
+        self.marked = true;
     }
 }
 pub struct BingoBoard {
     rows: Vec<Vec<BingoField>>,
+    won: bool,
 }
 impl BingoBoard {
     pub fn new(rows: Vec<Vec<BingoField>>) -> Self {
-        Self { rows }
+        Self { rows, won: false }
     }
     pub fn mark(&mut self, val: usize) {
         self.rows.iter_mut().for_each(|row| {
@@ -28,28 +29,93 @@ impl BingoBoard {
                 field.mark();
             });
         });
+        self.check_win();
+    }
+    pub fn check_win(&mut self) {
+        // check if we have a full row with marked fields
+        for row in self.rows.iter() {
+            if row.iter().filter(|f| f.marked).count() == 5 {
+                self.won = true;
+                return;
+            }
+        }
+        // check if we have a full column with marked fields
+        let mut marked = 0;
+        for column in 0..4 {
+            for row in self.rows.iter() {
+                if row[column].marked {
+                    marked += 1;
+                }
+            }
+            if marked == 5 {
+                self.won = true;
+                return;
+            }
+            marked = 0;
+        }
     }
     pub fn calculate_score(&self, called: usize) -> usize {
         let mut score = 0;
         for row in self.rows.iter() {
             score += row
                 .iter()
-                .filter(|f| !f.state)
+                .filter(|f| !f.marked)
                 .fold(0, |acc, field| acc + field.val);
         }
         score * called
     }
+    pub fn parse_row(s: &str) -> Vec<BingoField> {
+        lazy_static! {
+            static ref RE_BINGODIGIT: Regex = Regex::new(r" +").unwrap();
+        }
+        RE_BINGODIGIT
+            .split(s.trim())
+            .map(|n| n.parse::<usize>().unwrap())
+            .map(BingoField::new)
+            .collect()
+    }
+}
+fn main() {
+    let input = fs::read_to_string("input.txt").unwrap();
+    let (drawn_numbers, mut boards) = parse_puzzle_data(&input);
+    let part1 = solve1(&drawn_numbers, &mut boards);
+    println!("Part 1: {}", &part1);
+    let part2 = solve2(&drawn_numbers, &mut boards);
+    println!("Part 2: {:?}", &part2);
 }
 
-pub fn parse_row(s: &str) -> Vec<BingoField> {
-    lazy_static! {
-        static ref RE_BINGODIGIT: Regex = Regex::new(r" +").unwrap();
+fn solve2(drawn_numbers: &[usize], boards: &mut [BingoBoard]) -> (usize, usize) {
+    let mut remaining = boards.len();
+    let mut winning_boards = HashMap::with_capacity(boards.len());
+
+    for n in drawn_numbers {
+        for (board_number, board) in boards.iter_mut().enumerate() {
+            board.mark(*n);
+            if board.won {
+                winning_boards.entry(board_number).or_insert_with(|| {
+                    remaining -= 1;
+                    board.calculate_score(*n)
+                });
+
+                if remaining == 0 {
+                    return (*n, board.calculate_score(*n));
+                }
+            }
+        }
     }
-    RE_BINGODIGIT
-        .split(s.trim())
-        .map(|n| n.parse::<usize>().unwrap())
-        .map(BingoField::new)
-        .collect()
+    (0, 0)
+}
+
+fn solve1(drawn_numbers: &[usize], boards: &mut [BingoBoard]) -> usize {
+    for n in drawn_numbers {
+        for board in boards.iter_mut() {
+            board.mark(*n);
+            if board.won {
+                return board.calculate_score(*n);
+            }
+        }
+    }
+    0
 }
 
 pub fn parse_puzzle_data(input: &str) -> (Vec<usize>, Vec<BingoBoard>) {
@@ -66,7 +132,7 @@ pub fn parse_puzzle_data(input: &str) -> (Vec<usize>, Vec<BingoBoard>) {
         let mut rows = Vec::with_capacity(5);
         for _ in 0..5 {
             if let Some(s) = raw_boards.next() {
-                rows.push(parse_row(s));
+                rows.push(BingoBoard::parse_row(s));
             } else {
                 panic!("Unable to finish board.")
             }
@@ -75,10 +141,7 @@ pub fn parse_puzzle_data(input: &str) -> (Vec<usize>, Vec<BingoBoard>) {
     }
     (drawn_numbers, boards)
 }
-fn main() {
-    let input = fs::read_to_string("input.txt").unwrap();
-    let (drawn_numbers, boards) = parse_puzzle_data(&input);
-}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,7 +192,7 @@ mod tests {
     fn test_parse_row() {
         let row = "10 25  36 740 1";
         assert_eq!(
-            parse_row(row),
+            BingoBoard::parse_row(row),
             vec![
                 BingoField::new(10),
                 BingoField::new(25),
@@ -143,7 +206,7 @@ mod tests {
     fn test_parse_row2() {
         let row = " 8  2 23  4 24";
         assert_eq!(
-            parse_row(row),
+            BingoBoard::parse_row(row),
             vec![
                 BingoField::new(8),
                 BingoField::new(2),
@@ -152,5 +215,28 @@ mod tests {
                 BingoField::new(24)
             ]
         );
+    }
+
+    #[test]
+    fn test_check_win1() {
+        let (_, mut boards) = parse_puzzle_data(EXAMPLE_DATA);
+        let drawn_numbers = vec![7, 4, 9, 5, 11, 17, 23, 2, 0, 14, 21, 24];
+        let mut result = 0;
+        for n in drawn_numbers.iter() {
+            for board in boards.iter_mut() {
+                board.mark(*n);
+                if board.won {
+                    result = board.calculate_score(*n);
+                    break;
+                }
+            }
+        }
+        assert_eq!(result, 4512);
+    }
+
+    #[test]
+    fn test_solve2() {
+        let (drawn_numbers, mut boards) = parse_puzzle_data(EXAMPLE_DATA);
+        assert_eq!(solve2(&drawn_numbers, &mut boards), (13, 1924));
     }
 }
