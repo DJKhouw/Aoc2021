@@ -29,7 +29,7 @@ pub struct School {
 
 impl School {
     pub fn new(timers: &[u8]) -> Self {
-        let fish = timers.into_iter().map(|&n| Fish::new(n)).collect();
+        let fish = timers.iter().map(|&n| Fish::new(n)).collect();
         Self { fish }
     }
     pub fn add(&mut self, fish: Fish) {
