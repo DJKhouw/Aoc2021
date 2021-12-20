@@ -1,5 +1,8 @@
-use std::fs;
-#[derive(Debug, PartialEq, Eq)]
+use std::{
+    collections::{BinaryHeap, VecDeque},
+    fs,
+};
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PositionKind {
     Middle,
     UpperLeft,
@@ -15,6 +18,19 @@ fn main() {
     let input = fs::read_to_string("input.txt").unwrap();
     let part1 = solve1(&input);
     println!("Part 1: {}", &part1);
+    let part2: u64 = solve2(&input);
+    println!("Part 2: {}", &part2);
+}
+
+pub fn solve1(input: &str) -> u32 {
+    let map = get_ocean_map(input);
+    let low_points = get_low_points(&map);
+    low_points.iter().fold(0, |acc, n| acc + (*n + 1))
+}
+pub fn solve2(input: &str) -> u64 {
+    let map = get_ocean_map(input);
+    let basins = get_largest_basins(&map);
+    basins.iter().product()
 }
 
 pub fn get_ocean_map(input: &str) -> Vec<Vec<u32>> {
@@ -30,9 +46,25 @@ pub fn get_ocean_map(input: &str) -> Vec<Vec<u32>> {
         })
         .collect()
 }
+pub fn get_low_points(input: &[Vec<u32>]) -> Vec<u32> {
+    let max_rows = input.len() - 1;
+    let max_columns = input[0].len() - 1;
+
+    let mut kind;
+    let mut low_points = Vec::new();
+
+    for (row, values) in input.iter().enumerate() {
+        for (column, &v) in values.iter().enumerate() {
+            kind = get_position_kind((row, column), max_rows, max_columns);
+            if is_low_point(input, (row, column), kind) {
+                low_points.push(v)
+            }
+        }
+    }
+    low_points
+}
 pub fn get_position_kind(
-    row: usize,
-    column: usize,
+    (row, column): (usize, usize),
     max_rows: usize,
     max_columns: usize,
 ) -> PositionKind {
@@ -101,27 +133,73 @@ pub fn is_low_point(map: &[Vec<u32>], point: (usize, usize), kind: PositionKind)
         }
     }
 }
-pub fn get_low_points(input: &[Vec<u32>]) -> Vec<u32> {
-    let max_rows = input.len() - 1;
-    let max_columns = input[0].len() - 1;
-
-    let mut kind;
-    let mut low_points = Vec::new();
-
-    for (row, values) in input.iter().enumerate() {
-        for (column, &v) in values.iter().enumerate() {
-            kind = get_position_kind(row, column, max_rows, max_columns);
-            if is_low_point(input, (row, column), kind) {
-                low_points.push(v)
+pub fn print_map(map: &[Vec<u32>]) {
+    for row in 0..map.len() {
+        for column in 0..map[0].len() {
+            print!("{}", &map[row][column]);
+        }
+        println!();
+    }
+}
+pub fn get_largest_basins(map: &[Vec<u32>]) -> Vec<u64> {
+    let mut map = map.iter().map(|v| v.to_vec()).collect::<Vec<_>>();
+    let mut basin_areas = BinaryHeap::new();
+    let mut fill_queue = VecDeque::new();
+    let mut area: u64;
+    let mut next: (usize, usize);
+    let mut kind: PositionKind;
+    let max_rows = map.len() - 1;
+    let max_columns = map[0].len() - 1;
+    for row_idx in 0..=max_rows {
+        for column_idx in 0..=max_columns {
+            if map[row_idx][column_idx] > 8 {
+                continue;
             }
+            area = 0;
+            fill_queue.push_back((row_idx, column_idx));
+            map[row_idx][column_idx] = 9;
+            while !fill_queue.is_empty() {
+                next = fill_queue.pop_front().unwrap();
+                kind = get_position_kind(next, max_rows, max_columns);
+                for (i, j) in get_adjacent_areas(next, kind) {
+                    if map[i][j] < 9 {
+                        fill_queue.push_back((i, j));
+                        map[i][j] = 9;
+                    }
+                }
+                area += 1;
+            }
+            basin_areas.push(area);
         }
     }
-    low_points
+
+    if basin_areas.len() < 3 {
+        panic!("less than 3 basins found!");
+    } else {
+        (0..3).map(|_| basin_areas.pop().unwrap()).collect()
+    }
 }
-pub fn solve1(input: &str) -> u32 {
-    let map = get_ocean_map(input);
-    let low_points = get_low_points(&map);
-    low_points.iter().fold(0, |acc, n| acc + (*n + 1))
+
+pub fn get_adjacent_areas(
+    (row, column): (usize, usize),
+    kind: PositionKind,
+) -> Vec<(usize, usize)> {
+    match kind {
+        PositionKind::Middle => vec![
+            (row + 1, column),
+            (row - 1, column),
+            (row, column + 1),
+            (row, column - 1),
+        ],
+        PositionKind::UpperLeft => vec![(row + 1, column), (row, column + 1)],
+        PositionKind::UpperRight => vec![(row + 1, column), (row, column - 1)],
+        PositionKind::LowerLeft => vec![(row - 1, column), (row, column + 1)],
+        PositionKind::LowerRight => vec![(row - 1, column), (row, column - 1)],
+        PositionKind::Top => vec![(row + 1, column), (row, column + 1), (row, column - 1)],
+        PositionKind::Bottom => vec![(row - 1, column), (row, column + 1), (row, column - 1)],
+        PositionKind::LeftEdge => vec![(row + 1, column), (row - 1, column), (row, column + 1)],
+        PositionKind::RightEdge => vec![(row + 1, column), (row - 1, column), (row, column - 1)],
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -150,15 +228,15 @@ mod tests {
 
         let max_columns = map[0].len() - 1;
         assert_eq!(max_columns, 9);
-        let ul = get_position_kind(0, 0, max_rows, max_columns);
-        let ur = get_position_kind(0, 9, max_rows, max_columns);
-        let ll = get_position_kind(max_rows, 0, max_rows, max_columns);
-        let lr = get_position_kind(max_rows, max_columns, max_rows, max_columns);
-        let top = get_position_kind(0, 1, max_rows, max_columns);
-        let bottom = get_position_kind(max_rows, 1, max_rows, max_columns);
-        let left = get_position_kind(1, 0, max_rows, max_columns);
-        let right = get_position_kind(1, max_columns, max_rows, max_columns);
-        let normal = get_position_kind(2, 2, max_rows, max_columns);
+        let ul = get_position_kind((0, 0), max_rows, max_columns);
+        let ur = get_position_kind((0, 9), max_rows, max_columns);
+        let ll = get_position_kind((max_rows, 0), max_rows, max_columns);
+        let lr = get_position_kind((max_rows, max_columns), max_rows, max_columns);
+        let top = get_position_kind((0, 1), max_rows, max_columns);
+        let bottom = get_position_kind((max_rows, 1), max_rows, max_columns);
+        let left = get_position_kind((1, 0), max_rows, max_columns);
+        let right = get_position_kind((1, max_columns), max_rows, max_columns);
+        let normal = get_position_kind((2, 2), max_rows, max_columns);
         assert_eq!(ul, PositionKind::UpperLeft);
         assert_eq!(ur, PositionKind::UpperRight);
         assert_eq!(ll, PositionKind::LowerLeft);
@@ -174,17 +252,97 @@ mod tests {
         let map = get_ocean_map(EXAMPLE_DATA);
         let max_rows = map.len() - 1;
         let max_columns = map[0].len() - 1;
-        let kind = get_position_kind(0, 1, max_rows, max_columns);
+        let kind = get_position_kind((0, 1), max_rows, max_columns);
         assert_eq!(kind, PositionKind::Top);
         assert!(is_low_point(&map, (0, 1), kind));
         assert!(is_low_point(
             &map,
             (2, 2),
-            get_position_kind(2, 2, max_rows, max_columns)
+            get_position_kind((2, 2), max_rows, max_columns)
         ));
     }
     #[test]
     fn test_solve1() {
         assert_eq!(solve1(EXAMPLE_DATA), 15);
+    }
+
+    #[test]
+    fn test_get_adjacent_areas() {
+        let map = get_ocean_map(EXAMPLE_DATA);
+        let max_rows = map.len() - 1;
+        let max_columns = map[0].len() - 1;
+
+        for row in 0..=max_rows {
+            for column in 0..=max_columns {
+                let kind = get_position_kind((row, column), max_rows, max_columns);
+                let adjacent = get_adjacent_areas((row, column), kind);
+                match kind {
+                    PositionKind::Middle => {
+                        assert_eq!(adjacent.len(), 4);
+                        assert_eq!(adjacent[0], (row + 1, column), "Middle length failure");
+                        assert_eq!(adjacent[1], (row - 1, column), "Middle value failure 0");
+                        assert_eq!(adjacent[2], (row, column + 1), "Middle value failure 1");
+                        assert_eq!(adjacent[3], (row, column - 1), "Middle value failure 2");
+                    }
+                    PositionKind::UpperLeft => {
+                        assert_eq!(adjacent.len(), 2, "UpperLeft length failure");
+                        assert_eq!(adjacent[0], (row + 1, column), "UpperLeft value failure 0");
+                        assert_eq!(adjacent[1], (row, column + 1), "UpperLeft value failure 1");
+                    }
+                    PositionKind::UpperRight => {
+                        assert_eq!(adjacent.len(), 2, "UpperRight length failure");
+                        assert_eq!(adjacent[0], (row + 1, column), "UpperRight value failure 0");
+                        assert_eq!(adjacent[1], (row, column - 1), "UpperRight value failure 1");
+                    }
+                    PositionKind::LowerLeft => {
+                        assert_eq!(adjacent.len(), 2, "LowerLeft length failure");
+                        assert_eq!(adjacent[0], (row - 1, column), "LowerLeft value failure 0");
+                        assert_eq!(adjacent[1], (row, column + 1), "LowerLeft value failure 1");
+                    }
+                    PositionKind::LowerRight => {
+                        assert_eq!(adjacent.len(), 2, "LowerRight length failure");
+                        assert_eq!(adjacent[0], (row - 1, column), "LowerRight value failure 0");
+                        assert_eq!(adjacent[1], (row, column - 1), "LowerRight value failure 1");
+                    }
+                    PositionKind::Top => {
+                        assert_eq!(adjacent.len(), 3, "Top length failure");
+                        assert_eq!(adjacent[0], (row + 1, column), "Top value failure 0");
+                        assert_eq!(adjacent[1], (row, column + 1), "Top value failure 1");
+                        assert_eq!(adjacent[2], (row, column - 1), "Top value failure 2");
+                    }
+                    PositionKind::Bottom => {
+                        assert_eq!(adjacent.len(), 3, "Bottom length failure");
+                        assert_eq!(adjacent[0], (row - 1, column), "Bottom value failure 0");
+                        assert_eq!(adjacent[1], (row, column + 1), "Bottom value failure 1");
+                        assert_eq!(adjacent[2], (row, column - 1), "Bottom value failure 2");
+                    }
+                    PositionKind::LeftEdge => {
+                        assert_eq!(adjacent.len(), 3, "LeftEdge length failure");
+                        assert_eq!(adjacent[0], (row + 1, column), "LeftEdge value failure 0");
+                        assert_eq!(adjacent[1], (row - 1, column), "LeftEdge value failure 1");
+                        assert_eq!(adjacent[2], (row, column + 1), "LeftEdge value failure 2");
+                    }
+                    PositionKind::RightEdge => {
+                        assert_eq!(adjacent.len(), 3, "RightEdge length failure");
+                        assert_eq!(adjacent[0], (row + 1, column), "RightEdge value failure 0");
+                        assert_eq!(adjacent[1], (row - 1, column), "RightEdge value failure 1");
+                        assert_eq!(adjacent[2], (row, column - 1), "RightEdge value failure 2");
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn test_get_basins() {
+        let map = get_ocean_map(EXAMPLE_DATA);
+        let basins = get_largest_basins(&map);
+        assert_eq!(basins.len(), 3);
+        assert_eq!(basins[0], 14);
+        assert_eq!(basins[1], 9);
+        assert_eq!(basins[2], 9);
+    }
+    #[test]
+    fn test_solve2() {
+        assert_eq!(solve2(EXAMPLE_DATA), 1134);
     }
 }
